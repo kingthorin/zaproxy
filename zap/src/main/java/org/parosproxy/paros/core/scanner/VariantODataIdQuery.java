@@ -45,7 +45,7 @@ import org.parosproxy.paros.network.HttpMessage;
  */
 public class VariantODataIdQuery implements Variant {
 
-    private static final Logger log = Logger.getLogger(VariantODataIdQuery.class);
+    private static final Logger LOGGER = Logger.getLogger(VariantODataIdQuery.class);
 
     /** In order to identify the unnamed id we add this prefix to the resource name * */
     public static final String RESOURCE_ID_PREFIX = "__ID__";
@@ -152,7 +152,7 @@ public class VariantODataIdQuery implements Variant {
             }
 
         } catch (URIException e) {
-            log.error(e.getMessage() + uri, e);
+            LOGGER.error(e.getMessage() + uri, e);
         }
     }
 
