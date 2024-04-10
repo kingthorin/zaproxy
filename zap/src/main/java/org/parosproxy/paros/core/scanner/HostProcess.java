@@ -334,6 +334,9 @@ public class HostProcess implements Runnable {
     public void stop() {
         isStop = true;
         getAnalyser().stop();
+        if (parentScanner != null && parentScanner.isPaused()) {
+            parentScanner.resume();
+        }
     }
 
     /** Main execution method */
@@ -811,13 +814,38 @@ public class HostProcess implements Runnable {
      * @return true if the process has been paused
      */
     public boolean isPaused() {
-        return parentScanner.isPaused();
+        return parentScanner != null && parentScanner.isPaused();
     }
 
     private void checkPause() {
-        while (parentScanner.isPaused() && !isStop()) {
-            Util.sleep(500);
+        if (parentScanner != null) {
+            parentScanner.waitIfPaused();
         }
+    }
+
+    /**
+     * Delegates to the parent Scanner to block while the global scan is paused.
+     * Provides the same API that plugins/host code expect to call on their parent.
+     */
+    public void waitIfPaused() {
+        if (parentScanner != null) {
+            parentScanner.waitIfPaused();
+        }
+    }
+
+    /**
+     * Delegate helper to obtain a scanner-aligned "now" for timestamping so
+     * durations computed from plugin.getTimeStarted()/getTimeFinished()
+     * exclude paused time.
+     */
+    public java.util.Date getEffectiveNow() {
+        if (parentScanner != null) {
+            java.util.Date d = parentScanner.getEffectiveNow();
+            if (d != null) {
+                return d;
+            }
+        }
+        return new java.util.Date();
     }
 
     public int getPercentageComplete() {
