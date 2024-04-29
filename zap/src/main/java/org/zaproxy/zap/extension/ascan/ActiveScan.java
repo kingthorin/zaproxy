@@ -30,6 +30,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import javax.swing.DefaultListModel;
+
+import org.apache.commons.lang3.time.StopWatch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.core.scanner.Alert;
@@ -71,6 +73,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
 
     private Date timeStarted = null;
     private Date timeFinished = null;
+    private StopWatch timer = new StopWatch();
     private int maxResultsToList = 0;
 
     private final List<Integer> hRefs = Collections.synchronizedList(new ArrayList<>());
@@ -145,6 +148,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     public void pauseScan() {
         if (this.isRunning()) {
             super.pause();
+            this.timer.suspend();
         }
     }
 
@@ -179,6 +183,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     public void start(Target target) {
         reset();
         this.timeStarted = new Date();
+        this.timer.start();
         this.progress = 0;
         final int period = 2;
 
@@ -215,6 +220,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
         super.stop();
         if (schedHandle != null) {
             schedHandle.cancel(true);
+            stopTimer();
         }
     }
 
@@ -222,6 +228,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     public void resumeScan() {
         if (this.isPaused()) {
             super.resume();
+            this.timer.resume();
         }
     }
 
@@ -262,6 +269,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     @Override
     public void scannerComplete(int id) {
         this.timeFinished = new Date();
+        stopTimer();
         if (scheduler != null) {
             scheduler.shutdown();
         }
@@ -388,6 +396,18 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
 
     public Date getTimeFinished() {
         return timeFinished;
+    }
+
+    public StopWatch getTimer() {
+        return timer;
+    }
+
+    public void stopTimer() {
+        try {
+            this.timer.stop();
+        } catch (IllegalStateException ise) {
+            // Might already be paused
+        }
     }
 
     /**

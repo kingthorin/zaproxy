@@ -22,6 +22,8 @@ package org.zaproxy.zap.extension.ascan;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+
 import javax.swing.table.AbstractTableModel;
 import org.parosproxy.paros.Constant;
 import org.parosproxy.paros.core.scanner.HostProcess;
@@ -241,8 +243,9 @@ public class ScanProgressTableModel extends AbstractTableModel {
 
         // Update total elapsed time and request count
         Date end = (scan.getTimeFinished() == null) ? new Date() : scan.getTimeFinished();
+        
         long elapsed = end.getTime() - scan.getTimeStarted().getTime();
-        totTime = getElapsedTimeLabel(elapsed);
+        totTime = getElapsedTimeLabel(scan.getTimer().getTime(TimeUnit.MILLISECONDS));
         totRequests = Integer.toString(scan.getTotalRequests());
 
         this.fireTableDataChanged();

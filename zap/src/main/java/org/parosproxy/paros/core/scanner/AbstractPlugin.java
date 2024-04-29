@@ -93,6 +93,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.StopWatch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.control.Control;
@@ -136,6 +137,7 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
     private TechSet techSet;
     private Date started = null;
     private Date finished = null;
+    private StopWatch timer = new StopWatch();
     private AddOn.Status status = AddOn.Status.unknown;
 
     /** Default Constructor */
@@ -1343,17 +1345,20 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
 
     @Override
     public Date getTimeStarted() {
-        return this.started;
+        return new Date(this.timer.getStartTime());
+//        return this.started;
     }
 
     @Override
     public Date getTimeFinished() {
-        return this.finished;
+        return new Date(this.timer.getStopTime());
+//        return this.finished;
     }
 
     @Override
     public void setTimeStarted() {
         this.started = new Date();
+        this.timer.start();
         this.finished = null;
     }
 
