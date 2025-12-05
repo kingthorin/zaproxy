@@ -111,6 +111,7 @@ package org.parosproxy.paros.core.scanner;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -334,6 +335,9 @@ public class HostProcess implements Runnable {
     public void stop() {
         isStop = true;
         getAnalyser().stop();
+        if (parentScanner != null && parentScanner.isPaused()) {
+            parentScanner.resume();
+        }
     }
 
     /** Main execution method */
@@ -811,13 +815,37 @@ public class HostProcess implements Runnable {
      * @return true if the process has been paused
      */
     public boolean isPaused() {
-        return parentScanner.isPaused();
+        return parentScanner != null && parentScanner.isPaused();
     }
 
     private void checkPause() {
-        while (parentScanner.isPaused() && !isStop()) {
-            Util.sleep(500);
+        if (parentScanner != null) {
+            parentScanner.waitIfPaused();
         }
+    }
+
+    /**
+     * Delegates to the parent Scanner to block while the global scan is paused. Provides the same
+     * API that plugins/host code expect to call on their parent.
+     */
+    public void waitIfPaused() {
+        if (parentScanner != null) {
+            parentScanner.waitIfPaused();
+        }
+    }
+
+    /**
+     * Delegate helper to obtain a scanner-aligned "now" for timestamping so durations computed from
+     * plugin.getTimeStarted()/getTimeFinished() exclude paused time.
+     */
+    public Date getEffectiveNow() {
+        if (parentScanner != null) {
+            Date date = parentScanner.getEffectiveNow();
+            if (date != null) {
+                return date;
+            }
+        }
+        return new Date();
     }
 
     public int getPercentageComplete() {

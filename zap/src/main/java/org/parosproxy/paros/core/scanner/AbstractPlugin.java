@@ -844,6 +844,25 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
         return parent.isStop() || parent.isSkipped(this);
     }
 
+    /** Helper to block efficiently while the parent scanner is paused. */
+    public void handlePause() {
+        if (parent == null) {
+            return;
+        }
+
+        // Parent is a HostProcess; HostProcess delegates wait/isPaused to the Scanner.
+        while (parent.isPaused()) {
+            if (isStop()) {
+                parent.stop();
+                break;
+            }
+            parent.waitIfPaused();
+            if (isStop()) {
+                break;
+            }
+        }
+    }
+
     @Override
     public boolean isEnabled() {
         return enabled;
@@ -1353,13 +1372,31 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
 
     @Override
     public void setTimeStarted() {
-        this.started = new Date();
+        if (parent != null) {
+            Date effectiveNow = parent.getEffectiveNow();
+            if (effectiveNow != null) {
+                this.started = effectiveNow;
+            } else {
+                this.started = new Date();
+            }
+        } else {
+            this.started = new Date();
+        }
         this.finished = null;
     }
 
     @Override
     public void setTimeFinished() {
-        this.finished = new Date();
+        if (parent != null) {
+            Date effectiveNow = parent.getEffectiveNow();
+            if (effectiveNow != null) {
+                this.finished = effectiveNow;
+            } else {
+                this.finished = new Date();
+            }
+        } else {
+            this.finished = new Date();
+        }
     }
 
     @Override

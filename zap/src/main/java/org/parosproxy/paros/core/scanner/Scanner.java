@@ -68,6 +68,7 @@ import java.security.InvalidParameterException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -77,6 +78,9 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Vector;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -116,6 +120,13 @@ public class Scanner implements Runnable {
     private static final Logger LOGGER = LogManager.getLogger(Scanner.class);
     private static DecimalFormat decimalFormat = new java.text.DecimalFormat("###0.###");
 
+    private ReentrantLock pauseLock = new ReentrantLock();
+    private Condition pausedCondition = pauseLock.newCondition();
+
+    private long accumulatedElapsedNanos = 0L;
+    private long startNanos = 0L;
+    private long finishNanos = 0L;
+
     private Vector<ScannerListener> listenerList = new Vector<>();
 
     // ZAP: Added a list of scannerhooks
@@ -126,7 +137,6 @@ public class Scanner implements Runnable {
     private boolean isStop = false;
     private ThreadPool pool = null;
     private Target target = null;
-    private long startTimeMillis = 0;
     private List<Pattern> excludeUrls = null;
     private boolean justScanInScope = false;
     private boolean scanChildren = true;
@@ -137,7 +147,7 @@ public class Scanner implements Runnable {
     private int id;
 
     // ZAP: Added scanner pause option
-    private boolean pause = false;
+    private volatile boolean pause = false;
 
     private List<HostProcess> hostProcesses = new ArrayList<>();
 
@@ -205,7 +215,10 @@ public class Scanner implements Runnable {
     public void start(Target target) {
         isStop = false;
         LOGGER.info("scanner with ID {} started", id);
-        startTimeMillis = System.currentTimeMillis();
+        if (startNanos == 0L && accumulatedElapsedNanos == 0L) {
+            startNanos = System.nanoTime();
+            finishNanos = 0L;
+        }
         this.target = target;
         Thread thread = new Thread(this);
         thread.setPriority(Thread.NORM_PRIORITY - 2);
@@ -224,9 +237,19 @@ public class Scanner implements Runnable {
     }
 
     public void stop() {
+        if (this.pause) {
+            this.resume();
+        }
+
         if (!isStop) {
             LOGGER.info("scanner with ID {} stopped", id);
+            long now = System.nanoTime();
+            finishNanos = now;
 
+            if (startNanos != 0L) {
+                accumulatedElapsedNanos += now - startNanos;
+                startNanos = 0L;
+            }
             isStop = true;
             hostProcesses.stream().forEach(HostProcess::stop);
 
@@ -415,7 +438,7 @@ public class Scanner implements Runnable {
     }
 
     void notifyScannerComplete() {
-        long diffTimeMillis = System.currentTimeMillis() - startTimeMillis;
+        long diffTimeMillis = getElapsedMillis();
         String diffTimeString = decimalFormat.format(diffTimeMillis / 1000.0) + "s";
         LOGGER.info("scanner with ID {} completed in {}", id, diffTimeString);
         isStop = true;
@@ -444,6 +467,55 @@ public class Scanner implements Runnable {
         }
     }
 
+    /**
+     * Returns a virtual start Date such that: (now - getTimeStarted().getTime()) ==
+     * getElapsedMillis()
+     *
+     * <p>Declared here so subclasses (e.g. ActiveScan) may override, and so Scanner code can safely
+     * call getTimeStarted().
+     */
+    public Date getTimeStarted() {
+        long elapsedMillis = getElapsedMillis();
+        if (elapsedMillis <= 0L) {
+            return null;
+        }
+        return new Date(System.currentTimeMillis() - elapsedMillis);
+    }
+
+    /**
+     * Returns a virtual finish Date computed as (getTimeStarted() + getElapsedMillis()), or null if
+     * the scan has not finished yet (preserving prior behaviour).
+     *
+     * <p>Declared here so subclasses may override.
+     */
+    public Date getTimeFinished() {
+        // Preserve previous semantics: if not stopped and no explicit finish recorded, return null
+        if (!this.isStop() && this.finishNanos == 0L) {
+            return null;
+        }
+        Date started = getTimeStarted();
+        if (started == null) {
+            return null;
+        }
+        long elapsedMillis = getElapsedMillis();
+        return new Date(started.getTime() + elapsedMillis);
+    }
+
+    /**
+     * Returns an effective "now" Date for timestamping scan/plugin events so that:
+     * effectiveNow.getTime() - getTimeStarted().getTime() == getElapsedMillis() Useful where
+     * callers stamp Date objects and compute elapsed via (finish - start). Returns null if the scan
+     * hasn't started.
+     */
+    public Date getEffectiveNow() {
+        Date started = getTimeStarted();
+        if (started == null) {
+            return null;
+        }
+        long elapsedMillis = getElapsedMillis();
+        return new Date(started.getTime() + elapsedMillis);
+    }
+
     void notifyFilteredMessage(HttpMessage msg, String reason) {
         for (int i = 0; i < listenerList.size(); i++) {
             ScannerListener listener = listenerList.get(i);
@@ -469,19 +541,88 @@ public class Scanner implements Runnable {
 
     // ZAP: support pause and notify parent
     public void pause() {
-        this.pause = true;
+        if (pause) {
+            return;
+        }
+
+        // move current running period into accumulated elapsed and clear running start
+        long now = System.nanoTime();
+        if (startNanos != 0L) {
+            accumulatedElapsedNanos += now - startNanos;
+            startNanos = 0L;
+        }
+
+        pause = true;
         ActiveScanEventPublisher.publishScanEvent(
                 ScanEventPublisher.SCAN_PAUSED_EVENT, this.getId());
     }
 
     public void resume() {
-        this.pause = false;
+        if (!pause) {
+            return;
+        }
+
+        pause = false;
+
+        startNanos = System.nanoTime();
+
+        pauseLock.lock();
+        try {
+            pausedCondition.signalAll();
+        } finally {
+            pauseLock.unlock();
+        }
         ActiveScanEventPublisher.publishScanEvent(
                 ScanEventPublisher.SCAN_RESUMED_EVENT, this.getId());
     }
 
     public boolean isPaused() {
         return pause;
+    }
+
+    /**
+     * Called by worker threads to block while the scanner is paused. Returns immediately if not
+     * paused. Uses a ReentrantLock + Condition to wait efficiently.
+     */
+    public void waitIfPaused() {
+        // fast-path avoid locking when not paused
+        if (!pause) {
+            return;
+        }
+        pauseLock.lock();
+        try {
+            while (pause) {
+                try {
+                    pausedCondition.await();
+                } catch (InterruptedException e) {
+                    // preserve interrupt status — callers (workers) should handle interrupts
+                    // appropriately
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                if (isStop) {
+                    break;
+                }
+            }
+        } finally {
+            pauseLock.unlock();
+        }
+    }
+
+    /**
+     * Returns elapsed milliseconds excluding times when the scan was paused. If the scan is running
+     * includes the current running period.
+     */
+    public long getElapsedMillis() {
+        long elapsedNanos = accumulatedElapsedNanos;
+        if (startNanos != 0L) {
+            elapsedNanos += (System.nanoTime() - startNanos);
+        }
+        return TimeUnit.NANOSECONDS.toMillis(elapsedNanos);
+    }
+
+    public double getElapsedSeconds() {
+        return TimeUnit.MILLISECONDS.toSeconds(getElapsedMillis());
     }
 
     public void notifyNewMessage(HttpMessage msg) {
