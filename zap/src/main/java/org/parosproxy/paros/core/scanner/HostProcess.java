@@ -824,8 +824,8 @@ public class HostProcess implements Runnable {
     }
 
     /**
-     * Delegates to the parent Scanner to block while the global scan is paused.
-     * Provides the same API that plugins/host code expect to call on their parent.
+     * Delegates to the parent Scanner to block while the global scan is paused. Provides the same
+     * API that plugins/host code expect to call on their parent.
      */
     public void waitIfPaused() {
         if (parentScanner != null) {
@@ -834,9 +834,8 @@ public class HostProcess implements Runnable {
     }
 
     /**
-     * Delegate helper to obtain a scanner-aligned "now" for timestamping so
-     * durations computed from plugin.getTimeStarted()/getTimeFinished()
-     * exclude paused time.
+     * Delegate helper to obtain a scanner-aligned "now" for timestamping so durations computed from
+     * plugin.getTimeStarted()/getTimeFinished() exclude paused time.
      */
     public java.util.Date getEffectiveNow() {
         if (parentScanner != null) {

@@ -399,11 +399,12 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     }
 
     /**
-     * Override to return a virtual start Date such that:
-     *   (now - getTimeStarted().getTime()) == getElapsedMillis()
+     * Override to return a virtual start Date such that: (now - getTimeStarted().getTime()) ==
+     * getElapsedMillis()
      *
-     * This keeps existing callers that compute elapsed as (new Date().getTime() - getTimeStarted().getTime())
-     * working while excluding paused durations (since getElapsedMillis() already excludes pauses).
+     * <p>This keeps existing callers that compute elapsed as (new Date().getTime() -
+     * getTimeStarted().getTime()) working while excluding paused durations (since
+     * getElapsedMillis() already excludes pauses).
      */
     @Override
     public Date getTimeStarted() {
@@ -415,8 +416,8 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     }
 
     /**
-     * Override to return an effective finish Date (start + active elapsed). For running scans
-     * this preserves prior behaviour and may return null; for finished scans this returns
+     * Override to return an effective finish Date (start + active elapsed). For running scans this
+     * preserves prior behaviour and may return null; for finished scans this returns
      * getTimeStarted() + getElapsedMillis().
      */
     @Override

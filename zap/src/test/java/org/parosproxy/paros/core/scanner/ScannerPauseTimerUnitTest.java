@@ -20,11 +20,8 @@
 package org.parosproxy.paros.core.scanner;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThan;
-import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.mock;
 
@@ -171,10 +168,12 @@ class ScannerPauseTimerUnitTest {
 
         // When / Then - waitIfPaused should return immediately
         CountDownLatch latch = new CountDownLatch(1);
-        Thread thread = new Thread(() -> {
-            scanner.waitIfPaused();
-            latch.countDown();
-        });
+        Thread thread =
+                new Thread(
+                        () -> {
+                            scanner.waitIfPaused();
+                            latch.countDown();
+                        });
         thread.start();
 
         // Should complete very quickly
@@ -191,10 +190,12 @@ class ScannerPauseTimerUnitTest {
         AtomicBoolean waitCompleted = new AtomicBoolean(false);
 
         // When - start a thread that calls waitIfPaused
-        Thread waitingThread = new Thread(() -> {
-            scanner.waitIfPaused();
-            waitCompleted.set(true);
-        });
+        Thread waitingThread =
+                new Thread(
+                        () -> {
+                            scanner.waitIfPaused();
+                            waitCompleted.set(true);
+                        });
         waitingThread.start();
 
         // Then - thread should still be waiting after a short delay
@@ -217,10 +218,12 @@ class ScannerPauseTimerUnitTest {
         AtomicBoolean waitCompleted = new AtomicBoolean(false);
 
         // When - start a thread that calls waitIfPaused
-        Thread waitingThread = new Thread(() -> {
-            scanner.waitIfPaused();
-            waitCompleted.set(true);
-        });
+        Thread waitingThread =
+                new Thread(
+                        () -> {
+                            scanner.waitIfPaused();
+                            waitCompleted.set(true);
+                        });
         waitingThread.start();
 
         // Ensure thread is blocked

@@ -66,7 +66,6 @@ import java.security.InvalidParameterException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -242,7 +241,7 @@ public class Scanner implements Runnable {
             LOGGER.info("scanner with ID {} stopped", id);
             long now = System.nanoTime();
             finishNanos = now;
-            
+
             if (startNanos != 0L) {
                 accumulatedElapsedNanos += now - startNanos;
                 startNanos = 0L;
@@ -465,11 +464,11 @@ public class Scanner implements Runnable {
     }
 
     /**
-     * Returns a virtual start Date such that:
-     *   (now - getTimeStarted().getTime()) == getElapsedMillis()
+     * Returns a virtual start Date such that: (now - getTimeStarted().getTime()) ==
+     * getElapsedMillis()
      *
-     * Declared here so subclasses (e.g. ActiveScan) may override, and so Scanner code
-     * can safely call getTimeStarted().
+     * <p>Declared here so subclasses (e.g. ActiveScan) may override, and so Scanner code can safely
+     * call getTimeStarted().
      */
     public java.util.Date getTimeStarted() {
         long elapsedMillis = getElapsedMillis();
@@ -480,10 +479,10 @@ public class Scanner implements Runnable {
     }
 
     /**
-     * Returns a virtual finish Date computed as (getTimeStarted() + getElapsedMillis()),
-     * or null if the scan has not finished yet (preserving prior behaviour).
+     * Returns a virtual finish Date computed as (getTimeStarted() + getElapsedMillis()), or null if
+     * the scan has not finished yet (preserving prior behaviour).
      *
-     * Declared here so subclasses may override.
+     * <p>Declared here so subclasses may override.
      */
     public java.util.Date getTimeFinished() {
         // Preserve previous semantics: if not stopped and no explicit finish recorded, return null
@@ -578,8 +577,8 @@ public class Scanner implements Runnable {
     }
 
     /**
-     * Called by worker threads to block while the scanner is paused. Returns immediately if not paused.
-     * Uses a ReentrantLock + Condition to wait efficiently.
+     * Called by worker threads to block while the scanner is paused. Returns immediately if not
+     * paused. Uses a ReentrantLock + Condition to wait efficiently.
      */
     public void waitIfPaused() {
         // fast-path avoid locking when not paused
@@ -592,7 +591,8 @@ public class Scanner implements Runnable {
                 try {
                     pausedCondition.await();
                 } catch (InterruptedException e) {
-                    // preserve interrupt status — callers (workers) should handle interrupts appropriately
+                    // preserve interrupt status — callers (workers) should handle interrupts
+                    // appropriately
                     Thread.currentThread().interrupt();
                     break;
                 }
@@ -606,8 +606,8 @@ public class Scanner implements Runnable {
     }
 
     /**
-     * Returns elapsed milliseconds excluding times when the scan was paused.
-     * If the scan is running includes the current running period.
+     * Returns elapsed milliseconds excluding times when the scan was paused. If the scan is running
+     * includes the current running period.
      */
     public long getElapsedMillis() {
         long elapsedNanos = accumulatedElapsedNanos;

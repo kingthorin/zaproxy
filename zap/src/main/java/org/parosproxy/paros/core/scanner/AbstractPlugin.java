@@ -844,9 +844,7 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
         return parent.isStop() || parent.isSkipped(this);
     }
 
-    /**
-     * Helper to block efficiently while the parent scanner is paused.
-     */
+    /** Helper to block efficiently while the parent scanner is paused. */
     public void handlePause() {
         if (parent == null) {
             return;
