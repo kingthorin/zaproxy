@@ -66,6 +66,7 @@ package org.parosproxy.paros.core.scanner;
 
 import java.security.InvalidParameterException;
 import java.text.DecimalFormat;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -82,6 +83,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
+import org.apache.commons.lang3.time.StopWatch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.parosproxy.paros.Constant;
@@ -123,9 +125,10 @@ public class Scanner implements Runnable {
     private ReentrantLock pauseLock = new ReentrantLock();
     private Condition pausedCondition = pauseLock.newCondition();
 
-    private long accumulatedElapsedNanos = 0L;
-    private long startNanos = 0L;
-    private long finishNanos = 0L;
+    private final StopWatch stopWatch = new StopWatch();
+    private boolean stopWatchStarted = false;
+    private Instant startInstant = null;
+    private Instant finishInstant = null;
 
     private Vector<ScannerListener> listenerList = new Vector<>();
 
@@ -215,9 +218,18 @@ public class Scanner implements Runnable {
     public void start(Target target) {
         isStop = false;
         LOGGER.info("scanner with ID {} started", id);
-        if (startNanos == 0L && accumulatedElapsedNanos == 0L) {
-            startNanos = System.nanoTime();
-            finishNanos = 0L;
+        pauseLock.lock();
+        try {
+            if (!stopWatchStarted) {
+                stopWatch.start();
+                stopWatchStarted = true;
+                startInstant = Instant.now();
+                finishInstant = null;
+            } else if (stopWatch.isSuspended()) {
+                stopWatch.resume();
+            }
+        } finally {
+            pauseLock.unlock();
         }
         this.target = target;
         Thread thread = new Thread(this);
@@ -243,12 +255,17 @@ public class Scanner implements Runnable {
 
         if (!isStop) {
             LOGGER.info("scanner with ID {} stopped", id);
-            long now = System.nanoTime();
-            finishNanos = now;
-
-            if (startNanos != 0L) {
-                accumulatedElapsedNanos += now - startNanos;
-                startNanos = 0L;
+            pauseLock.lock();
+            try {
+                finishInstant = Instant.now();
+                if (stopWatchStarted && stopWatch.isStarted() && !stopWatch.isStopped()) {
+                    if (stopWatch.isSuspended()) {
+                        stopWatch.resume();
+                    }
+                    stopWatch.stop();
+                }
+            } finally {
+                pauseLock.unlock();
             }
             isStop = true;
             hostProcesses.stream().forEach(HostProcess::stop);
@@ -483,6 +500,15 @@ public class Scanner implements Runnable {
     }
 
     /**
+     * Returns the start instant of this scan, or null if the scan has not started.
+     *
+     * @return the start instant, or null if not started
+     */
+    public Instant getStartInstant() {
+        return startInstant;
+    }
+
+    /**
      * Returns a virtual finish Date computed as (getTimeStarted() + getElapsedMillis()), or null if
      * the scan has not finished yet (preserving prior behaviour).
      *
@@ -490,7 +516,7 @@ public class Scanner implements Runnable {
      */
     public Date getTimeFinished() {
         // Preserve previous semantics: if not stopped and no explicit finish recorded, return null
-        if (!this.isStop() && this.finishNanos == 0L) {
+        if (!this.isStop() && this.finishInstant == null) {
             return null;
         }
         Date started = getTimeStarted();
@@ -499,6 +525,15 @@ public class Scanner implements Runnable {
         }
         long elapsedMillis = getElapsedMillis();
         return new Date(started.getTime() + elapsedMillis);
+    }
+
+    /**
+     * Returns the finish instant of this scan, or null if the scan has not finished.
+     *
+     * @return the finish instant, or null if not finished
+     */
+    public Instant getFinishInstant() {
+        return finishInstant;
     }
 
     /**
@@ -514,6 +549,21 @@ public class Scanner implements Runnable {
         }
         long elapsedMillis = getElapsedMillis();
         return new Date(started.getTime() + elapsedMillis);
+    }
+
+    /**
+     * Returns an effective "now" Instant for timestamping scan/plugin events. Computed as
+     * startInstant + elapsed duration, which excludes paused time. Returns null if the scan hasn't
+     * started.
+     *
+     * @return effective current instant, or null if not started
+     */
+    public Instant getEffectiveInstant() {
+        if (startInstant == null) {
+            return null;
+        }
+        long elapsedMillis = getElapsedMillis();
+        return startInstant.plusMillis(elapsedMillis);
     }
 
     void notifyFilteredMessage(HttpMessage msg, String reason) {
@@ -545,11 +595,13 @@ public class Scanner implements Runnable {
             return;
         }
 
-        // move current running period into accumulated elapsed and clear running start
-        long now = System.nanoTime();
-        if (startNanos != 0L) {
-            accumulatedElapsedNanos += now - startNanos;
-            startNanos = 0L;
+        pauseLock.lock();
+        try {
+            if (stopWatchStarted && stopWatch.isStarted() && !stopWatch.isSuspended()) {
+                stopWatch.suspend();
+            }
+        } finally {
+            pauseLock.unlock();
         }
 
         pause = true;
@@ -564,10 +616,11 @@ public class Scanner implements Runnable {
 
         pause = false;
 
-        startNanos = System.nanoTime();
-
         pauseLock.lock();
         try {
+            if (stopWatchStarted && stopWatch.isSuspended()) {
+                stopWatch.resume();
+            }
             pausedCondition.signalAll();
         } finally {
             pauseLock.unlock();
@@ -614,15 +667,29 @@ public class Scanner implements Runnable {
      * includes the current running period.
      */
     public long getElapsedMillis() {
-        long elapsedNanos = accumulatedElapsedNanos;
-        if (startNanos != 0L) {
-            elapsedNanos += (System.nanoTime() - startNanos);
+        pauseLock.lock();
+        try {
+            if (!stopWatchStarted) {
+                return 0L;
+            }
+            return stopWatch.getTime(TimeUnit.MILLISECONDS);
+        } finally {
+            pauseLock.unlock();
         }
-        return TimeUnit.NANOSECONDS.toMillis(elapsedNanos);
+    }
+
+    /**
+     * Returns elapsed time in milliseconds (same as {@link #getElapsedMillis()} but provides
+     * explicit naming for new code).
+     *
+     * @return elapsed duration in milliseconds excluding paused time
+     */
+    public long getElapsedDurationMillis() {
+        return getElapsedMillis();
     }
 
     public double getElapsedSeconds() {
-        return TimeUnit.MILLISECONDS.toSeconds(getElapsedMillis());
+        return getElapsedMillis() / 1000.0;
     }
 
     public void notifyNewMessage(HttpMessage msg) {

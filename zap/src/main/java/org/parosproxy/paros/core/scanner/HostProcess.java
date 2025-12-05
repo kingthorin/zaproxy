@@ -110,6 +110,7 @@ package org.parosproxy.paros.core.scanner;
 
 import java.io.IOException;
 import java.text.DecimalFormat;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -846,6 +847,22 @@ public class HostProcess implements Runnable {
             }
         }
         return new Date();
+    }
+
+    /**
+     * Delegate helper to obtain an effective Instant for timestamping. Falls back to Instant.now()
+     * if the parent scanner is not available or not started.
+     *
+     * @return effective current instant
+     */
+    public Instant getEffectiveInstant() {
+        if (parentScanner != null) {
+            Instant instant = parentScanner.getEffectiveInstant();
+            if (instant != null) {
+                return instant;
+            }
+        }
+        return Instant.now();
     }
 
     public int getPercentageComplete() {

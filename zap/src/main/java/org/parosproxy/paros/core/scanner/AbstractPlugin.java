@@ -86,6 +86,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.security.InvalidParameterException;
+import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
 import java.util.Objects;
@@ -1365,9 +1366,27 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
         return this.started;
     }
 
+    /**
+     * Returns the start time as an Instant, or null if not set.
+     *
+     * @return the start instant, or null if not set
+     */
+    public Instant getTimeStartedInstant() {
+        return this.started != null ? this.started.toInstant() : null;
+    }
+
     @Override
     public Date getTimeFinished() {
         return this.finished;
+    }
+
+    /**
+     * Returns the finish time as an Instant, or null if not set.
+     *
+     * @return the finish instant, or null if not set
+     */
+    public Instant getTimeFinishedInstant() {
+        return this.finished != null ? this.finished.toInstant() : null;
     }
 
     @Override
@@ -1385,6 +1404,16 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
         this.finished = null;
     }
 
+    /**
+     * Sets the start time using an Instant.
+     *
+     * @param instant the start instant
+     */
+    public void setTimeStartedInstant(Instant instant) {
+        this.started = instant != null ? Date.from(instant) : null;
+        this.finished = null;
+    }
+
     @Override
     public void setTimeFinished() {
         if (parent != null) {
@@ -1397,6 +1426,15 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
         } else {
             this.finished = new Date();
         }
+    }
+
+    /**
+     * Sets the finish time using an Instant.
+     *
+     * @param instant the finish instant
+     */
+    public void setTimeFinishedInstant(Instant instant) {
+        this.finished = instant != null ? Date.from(instant) : null;
     }
 
     @Override

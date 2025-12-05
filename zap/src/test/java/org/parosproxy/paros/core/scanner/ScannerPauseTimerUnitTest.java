@@ -26,6 +26,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
+import java.time.Instant;
 import java.util.Date;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -275,5 +276,38 @@ class ScannerPauseTimerUnitTest {
 
         // Then - should not be paused (no exception)
         assertThat(scanner.isPaused(), is(false));
+    }
+
+    @Test
+    void shouldReturnNullStartInstantWhenNotStarted() {
+        // Given / When
+        Instant startInstant = scanner.getStartInstant();
+        // Then
+        assertThat(startInstant, is(nullValue()));
+    }
+
+    @Test
+    void shouldReturnNullFinishInstantWhenNotFinished() {
+        // Given / When
+        Instant finishInstant = scanner.getFinishInstant();
+        // Then
+        assertThat(finishInstant, is(nullValue()));
+    }
+
+    @Test
+    void shouldReturnNullEffectiveInstantWhenNotStarted() {
+        // Given / When
+        Instant effectiveInstant = scanner.getEffectiveInstant();
+        // Then
+        assertThat(effectiveInstant, is(nullValue()));
+    }
+
+    @Test
+    void shouldGetElapsedDurationMillisReturnSameAsGetElapsedMillis() {
+        // Given / When
+        long elapsed = scanner.getElapsedMillis();
+        long elapsedDuration = scanner.getElapsedDurationMillis();
+        // Then
+        assertThat(elapsedDuration, is(elapsed));
     }
 }

@@ -20,6 +20,7 @@
 package org.zaproxy.zap.extension.ascan;
 
 import java.awt.EventQueue;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.ConcurrentModificationException;
@@ -392,6 +393,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
      * getTimeStarted().getTime()) working while excluding paused durations (since
      * getElapsedMillis() already excludes pauses).
      */
+    @Override
     public Date getTimeStarted() {
         long elapsedMillis = getElapsedMillis();
         if (elapsedMillis <= 0L) {
@@ -401,10 +403,21 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
     }
 
     /**
+     * Returns the start instant of this scan, delegating to the parent implementation.
+     *
+     * @return the start instant, or null if not started
+     */
+    @Override
+    public Instant getStartInstant() {
+        return super.getStartInstant();
+    }
+
+    /**
      * Override to return an effective finish Date (start + active elapsed). For running scans this
      * preserves prior behaviour and may return null; for finished scans this returns
      * getTimeStarted() + getElapsedMillis().
      */
+    @Override
     public Date getTimeFinished() {
         if (!this.isStop() && this.timeFinished == null) {
             return null;
@@ -415,6 +428,16 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
         }
         long elapsedMillis = getElapsedMillis();
         return new Date(started.getTime() + elapsedMillis);
+    }
+
+    /**
+     * Returns the finish instant of this scan, delegating to the parent implementation.
+     *
+     * @return the finish instant, or null if not finished
+     */
+    @Override
+    public Instant getFinishInstant() {
+        return super.getFinishInstant();
     }
 
     /**
