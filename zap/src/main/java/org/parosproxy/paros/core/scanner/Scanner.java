@@ -258,7 +258,7 @@ public class Scanner implements Runnable {
             pauseLock.lock();
             try {
                 finishInstant = Instant.now();
-                if (stopWatchStarted && stopWatch.isStarted() && !stopWatch.isStopped()) {
+                if (stopWatchStarted && !stopWatch.isStopped()) {
                     if (stopWatch.isSuspended()) {
                         stopWatch.resume();
                     }
