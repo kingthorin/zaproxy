@@ -2204,4 +2204,122 @@ class AbstractPluginUnitTest extends PluginTestUtils {
         verify(hostProcess).alertFound(arg.capture());
         return arg.getValue();
     }
+
+    @Test
+    void shouldSetTimeStartedUsingEffectiveNowFromParent() {
+        // Given
+        AbstractPlugin plugin = createAbstractPlugin();
+        HostProcess hostProcess = mock(HostProcess.class);
+        java.util.Date effectiveNow = new java.util.Date(12345L);
+        given(hostProcess.getEffectiveNow()).willReturn(effectiveNow);
+        plugin.init(new HttpMessage(), hostProcess);
+
+        // When
+        plugin.setTimeStarted();
+
+        // Then
+        assertThat(plugin.getTimeStarted(), is(equalTo(effectiveNow)));
+    }
+
+    @Test
+    void shouldSetTimeStartedUsingNewDateWhenParentReturnsNull() {
+        // Given
+        AbstractPlugin plugin = createAbstractPlugin();
+        HostProcess hostProcess = mock(HostProcess.class);
+        given(hostProcess.getEffectiveNow()).willReturn(null);
+        plugin.init(new HttpMessage(), hostProcess);
+
+        // When
+        long before = System.currentTimeMillis();
+        plugin.setTimeStarted();
+        long after = System.currentTimeMillis();
+
+        // Then
+        java.util.Date started = plugin.getTimeStarted();
+        assertThat(started.getTime() >= before, is(true));
+        assertThat(started.getTime() <= after, is(true));
+    }
+
+    @Test
+    void shouldSetTimeStartedUsingNewDateWhenNoParent() {
+        // Given
+        AbstractPlugin plugin = createAbstractPlugin();
+        // Note: parent is null when plugin is not initialized
+
+        // When
+        long before = System.currentTimeMillis();
+        plugin.setTimeStarted();
+        long after = System.currentTimeMillis();
+
+        // Then
+        java.util.Date started = plugin.getTimeStarted();
+        assertThat(started.getTime() >= before, is(true));
+        assertThat(started.getTime() <= after, is(true));
+    }
+
+    @Test
+    void shouldSetTimeFinishedUsingEffectiveNowFromParent() {
+        // Given
+        AbstractPlugin plugin = createAbstractPlugin();
+        HostProcess hostProcess = mock(HostProcess.class);
+        java.util.Date effectiveNow = new java.util.Date(54321L);
+        given(hostProcess.getEffectiveNow()).willReturn(effectiveNow);
+        plugin.init(new HttpMessage(), hostProcess);
+
+        // When
+        plugin.setTimeFinished();
+
+        // Then
+        assertThat(plugin.getTimeFinished(), is(equalTo(effectiveNow)));
+    }
+
+    @Test
+    void shouldSetTimeFinishedUsingNewDateWhenParentReturnsNull() {
+        // Given
+        AbstractPlugin plugin = createAbstractPlugin();
+        HostProcess hostProcess = mock(HostProcess.class);
+        given(hostProcess.getEffectiveNow()).willReturn(null);
+        plugin.init(new HttpMessage(), hostProcess);
+
+        // When
+        long before = System.currentTimeMillis();
+        plugin.setTimeFinished();
+        long after = System.currentTimeMillis();
+
+        // Then
+        java.util.Date finished = plugin.getTimeFinished();
+        assertThat(finished.getTime() >= before, is(true));
+        assertThat(finished.getTime() <= after, is(true));
+    }
+
+    @Test
+    void shouldSetTimeFinishedUsingNewDateWhenNoParent() {
+        // Given
+        AbstractPlugin plugin = createAbstractPlugin();
+        // Note: parent is null when plugin is not initialized
+
+        // When
+        long before = System.currentTimeMillis();
+        plugin.setTimeFinished();
+        long after = System.currentTimeMillis();
+
+        // Then
+        java.util.Date finished = plugin.getTimeFinished();
+        assertThat(finished.getTime() >= before, is(true));
+        assertThat(finished.getTime() <= after, is(true));
+    }
+
+    @Test
+    void shouldClearTimeFinishedWhenTimeStartedIsSet() {
+        // Given
+        AbstractPlugin plugin = createAbstractPlugin();
+        plugin.setTimeFinished(); // Set a finish time first
+        assertThat(plugin.getTimeFinished(), is(org.hamcrest.Matchers.notNullValue()));
+
+        // When
+        plugin.setTimeStarted();
+
+        // Then
+        assertThat(plugin.getTimeFinished(), is(nullValue()));
+    }
 }

@@ -405,6 +405,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
      * This keeps existing callers that compute elapsed as (new Date().getTime() - getTimeStarted().getTime())
      * working while excluding paused durations (since getElapsedMillis() already excludes pauses).
      */
+    @Override
     public Date getTimeStarted() {
         long elapsedMillis = getElapsedMillis();
         if (elapsedMillis <= 0L) {
@@ -418,6 +419,7 @@ public class ActiveScan extends org.parosproxy.paros.core.scanner.Scanner
      * this preserves prior behaviour and may return null; for finished scans this returns
      * getTimeStarted() + getElapsedMillis().
      */
+    @Override
     public Date getTimeFinished() {
         if (!this.isStop() && this.timeFinished == null) {
             return null;

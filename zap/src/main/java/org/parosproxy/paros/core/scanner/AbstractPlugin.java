@@ -1374,13 +1374,31 @@ public abstract class AbstractPlugin implements Plugin, Comparable<Object> {
 
     @Override
     public void setTimeStarted() {
-        this.started = new Date();
+        if (parent != null) {
+            Date effectiveNow = parent.getEffectiveNow();
+            if (effectiveNow != null) {
+                this.started = effectiveNow;
+            } else {
+                this.started = new Date();
+            }
+        } else {
+            this.started = new Date();
+        }
         this.finished = null;
     }
 
     @Override
     public void setTimeFinished() {
-        this.finished = new Date();
+        if (parent != null) {
+            Date effectiveNow = parent.getEffectiveNow();
+            if (effectiveNow != null) {
+                this.finished = effectiveNow;
+            } else {
+                this.finished = new Date();
+            }
+        } else {
+            this.finished = new Date();
+        }
     }
 
     @Override
