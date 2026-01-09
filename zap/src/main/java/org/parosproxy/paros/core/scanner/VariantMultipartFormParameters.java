@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,7 +59,7 @@ public class VariantMultipartFormParameters implements Variant {
     // insensitive & DOTALL, and hit "test")
 
     private List<NameValuePair> params = Collections.emptyList();
-    private List<MultipartFormParameter> multiPartParams = new ArrayList<>();
+    private final List<MultipartFormParameter> multiPartParams = new ArrayList<>();
 
     private static final String SHORT_NAME = "multipart";
 
@@ -86,151 +87,330 @@ public class VariantMultipartFormParameters implements Variant {
     }
 
     private void parseImpl(HttpMessage msg, String contentType) {
-        ArrayList<NameValuePair> extractedParameters = new ArrayList<>();
-        int position = 0;
-        int offset = 0;
+        LOGGER.debug("Starting multipart form data parsing");
+        multiPartParams.clear();
         String bareBoundary = getBoundary(contentType, msg);
         if (bareBoundary == null) {
+            LOGGER.debug("No boundary found in content type, aborting parsing");
             return;
         }
-        String boundaryCrlf = bareBoundary + HttpHeader.CRLF;
-        for (String part : msg.getRequestBody().toString().split(Pattern.quote(boundaryCrlf))) {
-            if (!StringUtils.isBlank(part)) {
-                int partOffset = part.indexOf(HttpHeader.CRLF + HttpHeader.CRLF);
-                if (partOffset < 0) {
-                    // Move on, nothing to see here
-                    continue;
-                }
-                String partHeaderLine = part.substring(0, partOffset);
-                boolean isFileParam = partHeaderLine.contains("filename=");
-                part = boundaryCrlf + part;
-                Matcher nameMatcher = FIELD_NAME_PATTERN.matcher(partHeaderLine);
-                Matcher valueMatcher = FIELD_VALUE_PATTERN.matcher(part);
-                nameMatcher.find();
-                valueMatcher.find();
-                if (StringUtils.isBlank(valueMatcher.group("value"))) {
-                    valueMatcher.find();
-                    // Need to skip one find for some reason...
-                    // https://regex101.com/r/4ig6Wk/1
-                    // http://fiddle.re/23cudd (Click Java, hit "test")
-                }
+        LOGGER.debug("Extracted boundary: {}", bareBoundary);
 
-                String name = nameMatcher.group("name");
-                // Value doesn't include boundary, headerline, or double CRLF
-                String value =
-                        part.replaceAll(
-                                Pattern.quote(boundaryCrlf + partHeaderLine)
-                                        + HttpHeader.CRLF
-                                        + HttpHeader.CRLF,
-                                "");
-                value =
-                        value.replaceAll(
-                                HttpHeader.CRLF
-                                        + "("
-                                        + Pattern.quote(bareBoundary)
-                                        + DOUBLE_HYPHEN
-                                        + HttpHeader.CRLF
-                                        + ")?$",
-                                ""); // Strip final boundary
-                if (isFileParam) {
-                    position += 2;
-                    extractedParameters.add(
-                            new NameValuePair(
-                                    NameValuePair.TYPE_MULTIPART_DATA_FILE_PARAM,
-                                    name,
-                                    value,
-                                    position));
-                } else {
-                    extractedParameters.add(
-                            new NameValuePair(
-                                    NameValuePair.TYPE_MULTIPART_DATA_PARAM,
-                                    name,
-                                    value,
-                                    position));
-                }
-                int start =
-                        offset
-                                + part.indexOf(HttpHeader.CRLF + HttpHeader.CRLF)
-                                + 4; // 4 for two CRLFs
-                int end = start + value.length();
-                LOGGER.debug(
-                        "Name: {} O: {} S: {} E: {} Pos: {}", name, offset, start, end, position);
-                multiPartParams.add(
-                        new MultipartFormParameter(
-                                name,
-                                valueMatcher.group("value"),
-                                start,
-                                end,
-                                position,
-                                MultipartFormParameter.Type.GENERAL));
-                LOGGER.debug("Name: {} value: {}", name, valueMatcher.group("value"));
-                if (isFileParam) {
-                    position -= 2;
-                    // Extract the filename
-                    Matcher fnValueMatcher = FILENAME_PART_PATTERN.matcher(part);
-                    fnValueMatcher.find();
-                    String fnValue = fnValueMatcher.group("filename");
-                    extractedParameters.add(
-                            extractedParameters.size() - 1,
-                            new NameValuePair(
-                                    NameValuePair.TYPE_MULTIPART_DATA_FILE_NAME,
-                                    name,
-                                    fnValue,
-                                    position));
-                    int fnStart = offset + part.indexOf(fnValue);
-                    int fnEnd = fnStart + fnValue.length();
-                    LOGGER.debug(
-                            "Name: {} O: {} S: {} E: {} Pos: {}",
-                            name,
-                            offset,
-                            fnStart,
-                            fnEnd,
-                            position);
-                    multiPartParams.add(
-                            multiPartParams.size() - 1,
-                            new MultipartFormParameter(
-                                    name,
-                                    fnValue,
-                                    fnStart,
-                                    fnEnd,
-                                    position,
-                                    MultipartFormParameter.Type.FILE_NAME));
-                    // Extract the content-type
-                    Matcher ctValueMatcher = CONTENTTYPE_PART_PATTERN.matcher(part);
-                    ctValueMatcher.find();
-                    String ctValue = ctValueMatcher.group("contenttype");
-                    extractedParameters.add(
-                            extractedParameters.size() - 1,
-                            new NameValuePair(
-                                    NameValuePair.TYPE_MULTIPART_DATA_FILE_CONTENTTYPE,
-                                    name,
-                                    ctValue,
-                                    ++position));
-                    int ctStart = offset + part.indexOf(ctValue);
-                    int ctEnd = ctStart + ctValue.length();
-                    LOGGER.debug(
-                            "Name: {} O: {} S: {} E: {} Pos: {}",
-                            name,
-                            offset,
-                            ctStart,
-                            ctEnd,
-                            position);
-                    multiPartParams.add(
-                            multiPartParams.size() - 1,
-                            new MultipartFormParameter(
-                                    name,
-                                    ctValue,
-                                    ctStart,
-                                    ctEnd,
-                                    position,
-                                    MultipartFormParameter.Type.FILE_CONTENT_TYPE));
-                }
+        String requestBody = msg.getRequestBody().toString();
+        String boundaryCrlf = bareBoundary + HttpHeader.CRLF;
+        String[] parts = requestBody.split(Pattern.quote(boundaryCrlf));
+        LOGGER.debug("Split request body into {} parts", parts.length);
+
+        List<NameValuePair> extractedParameters = new ArrayList<>();
+        int position = 0;
+        int offset = 0;
+
+        for (String part : parts) {
+            if (StringUtils.isBlank(part)) {
+                LOGGER.debug("Skipping blank part at position {}", position);
+                position++;
+                // Match original: offset += part.length() where part is "" (empty), so offset stays same
+                offset += part.length();
+                continue;
             }
-            position++;
-            offset = offset + part.length();
+
+            // Match original behavior: modify part in place to include boundary
+            // This matches: part = boundaryCrlf + part;
+            String originalPart = part;
+            String fullPart = boundaryCrlf + part;
+            
+            ParsedPart parsedPart = parsePart(originalPart, fullPart, boundaryCrlf, bareBoundary, offset, position);
+            if (parsedPart == null) {
+                LOGGER.debug("Part at position {} could not be parsed, skipping", position);
+                position++;
+                // Match original: offset += part.length() where part is the modified one
+                offset += fullPart.length();
+                continue;
+            }
+
+            extractedParameters.addAll(parsedPart.nameValuePairs());
+            multiPartParams.addAll(parsedPart.multipartParameters());
+
+            position = parsedPart.nextPosition();
+            // Match original: offset += part.length() where part is modified (boundaryCrlf + originalPart)
+            offset += fullPart.length();
         }
+
         params = Collections.unmodifiableList(extractedParameters);
+        LOGGER.debug("Parsing complete. Extracted {} parameters", params.size());
     }
+
+    /**
+     * Parses a single multipart form data part.
+     *
+     * @param part the raw part string (without boundary)
+     * @param fullPart the part string with boundary prefix
+     * @param boundaryCrlf the boundary with CRLF
+     * @param bareBoundary the boundary without CRLF
+     * @param offset the current offset in the request body (points to start of boundary)
+     * @param position the current parameter position
+     * @return parsed part data or null if parsing fails
+     */
+    private ParsedPart parsePart(String part, String fullPart, String boundaryCrlf, String bareBoundary, int offset, int position) {
+        int headerSeparatorIndex = part.indexOf(HttpHeader.CRLF + HttpHeader.CRLF);
+        if (headerSeparatorIndex < 0) {
+            LOGGER.debug("Part missing header separator (CRLF+CRLF), skipping");
+            return null;
+        }
+
+        String partHeaderLine = part.substring(0, headerSeparatorIndex);
+        boolean isFileParam = partHeaderLine.contains("filename=");
+        LOGGER.debug("Parsing part - isFileParam: {}, header length: {}", isFileParam, partHeaderLine.length());
+        String fieldName = extractFieldName(partHeaderLine);
+        if (fieldName == null) {
+            LOGGER.debug("Could not extract field name from part header");
+            return null;
+        }
+
+        FieldValue fieldValue = extractFieldValue(fullPart, boundaryCrlf, partHeaderLine, bareBoundary);
+        LOGGER.debug("Extracted field - name: {}, cleaned value length: {}, raw value length: {}",
+                fieldName, fieldValue.cleanedValue().length(), fieldValue.rawValue().length());
+
+        List<NameValuePair> nameValuePairs = new ArrayList<>();
+        List<MultipartFormParameter> multipartParams = new ArrayList<>();
+
+        // Match original: offset points to start of boundary, fullPart includes boundary
+        // So valueStart = offset + position of CRLF+CRLF in fullPart + 4
+        int valueStart = offset + fullPart.indexOf(HttpHeader.CRLF + HttpHeader.CRLF) + 4; // 4 for two CRLFs
+        int valueEnd = valueStart + fieldValue.cleanedValue().length();
+
+        int nextPosition;
+        if (isFileParam) {
+            int fileContentPosition = processFileParameter(
+                    fullPart, fieldName, fieldValue, offset, position,
+                    nameValuePairs, multipartParams, valueStart, valueEnd);
+            // For file params, next position is file content position + 1
+            nextPosition = fileContentPosition + 1;
+        } else {
+            processRegularParameter(
+                    fieldName, fieldValue, position, valueStart, valueEnd,
+                    nameValuePairs, multipartParams);
+            // For regular params, next position is current position + 1
+            nextPosition = position + 1;
+        }
+
+        int nextOffset = offset + part.length();
+
+        return new ParsedPart(nameValuePairs, multipartParams, nextPosition, nextOffset);
+    }
+
+    /**
+     * Extracts the field name from a part header line.
+     *
+     * @param partHeaderLine the header line of the part
+     * @return the field name or null if not found
+     */
+    private String extractFieldName(String partHeaderLine) {
+        Matcher nameMatcher = FIELD_NAME_PATTERN.matcher(partHeaderLine);
+        if (!nameMatcher.find()) {
+            LOGGER.debug("Field name pattern not found in header: {}", partHeaderLine);
+            return null;
+        }
+        return nameMatcher.group("name");
+    }
+
+    /**
+     * Extracts the field value from a full part string.
+     *
+     * @param fullPart the complete part including boundary
+     * @param boundaryCrlf the boundary with CRLF
+     * @param partHeaderLine the header line of the part
+     * @param bareBoundary the boundary without CRLF
+     * @return a record containing both the cleaned value (for NameValuePair) and raw value (for MultipartFormParameter)
+     */
+    private FieldValue extractFieldValue(String fullPart, String boundaryCrlf, String partHeaderLine, String bareBoundary) {
+        Matcher valueMatcher = FIELD_VALUE_PATTERN.matcher(fullPart);
+        valueMatcher.find();
+        if (StringUtils.isBlank(valueMatcher.group("value"))) {
+            // Need to skip one find for some reason...
+            // https://regex101.com/r/4ig6Wk/1
+            // http://fiddle.re/23cudd (Click Java, hit "test")
+            valueMatcher.find();
+        }
+        String rawValue = valueMatcher.group("value");
+
+        // Value doesn't include boundary, headerline, or double CRLF
+        String cleanedValue = fullPart.replaceAll(
+                Pattern.quote(boundaryCrlf + partHeaderLine) + HttpHeader.CRLF + HttpHeader.CRLF,
+                "");
+        // Strip final boundary
+        cleanedValue = cleanedValue.replaceAll(
+                HttpHeader.CRLF + "(" + Pattern.quote(bareBoundary) + DOUBLE_HYPHEN + HttpHeader.CRLF + ")?$",
+                "");
+        return new FieldValue(cleanedValue, rawValue);
+    }
+
+    /**
+     * Record to hold both cleaned and raw field values.
+     */
+    private record FieldValue(String cleanedValue, String rawValue) {}
+
+    /**
+     * Processes a regular (non-file) multipart parameter.
+     *
+     * @param fieldName the field name
+     * @param fieldValue the field value (both cleaned and raw)
+     * @param position the parameter position
+     * @param valueStart the start offset of the value
+     * @param valueEnd the end offset of the value
+     * @param nameValuePairs the list to add the NameValuePair to
+     * @param multipartParams the list to add the MultipartFormParameter to
+     */
+    private void processRegularParameter(
+            String fieldName, FieldValue fieldValue, int position,
+            int valueStart, int valueEnd,
+            List<NameValuePair> nameValuePairs, List<MultipartFormParameter> multipartParams) {
+        LOGGER.debug("Processing regular parameter - name: {}, position: {}, start: {}, end: {}",
+                fieldName, position, valueStart, valueEnd);
+
+        nameValuePairs.add(new NameValuePair(
+                NameValuePair.TYPE_MULTIPART_DATA_PARAM,
+                fieldName,
+                fieldValue.cleanedValue(),
+                position));
+
+        multipartParams.add(new MultipartFormParameter(
+                fieldName,
+                fieldValue.rawValue(),
+                valueStart,
+                valueEnd,
+                position,
+                MultipartFormParameter.Type.GENERAL));
+    }
+
+    /**
+     * Processes a file multipart parameter, extracting filename, content-type, and file content.
+     *
+     * @param fullPart the complete part including boundary
+     * @param fieldName the field name
+     * @param fieldValue the field value (file content, both cleaned and raw)
+     * @param offset the current offset in the request body
+     * @param position the current parameter position
+     * @param nameValuePairs the list to add NameValuePairs to
+     * @param multipartParams the list to add MultipartFormParameters to
+     * @param valueStart the start offset of the value
+     * @param valueEnd the end offset of the value
+     * @return the file content position (used to calculate next position)
+     */
+    private int processFileParameter(
+            String fullPart, String fieldName, FieldValue fieldValue,
+            int offset, int position,
+            List<NameValuePair> nameValuePairs, List<MultipartFormParameter> multipartParams,
+            int valueStart, int valueEnd) {
+        LOGGER.debug("Processing file parameter - name: {}, position: {}", fieldName, position);
+
+        // File content parameter (position + 2 to leave room for filename and content-type)
+        int fileContentPosition = position + 2;
+        nameValuePairs.add(new NameValuePair(
+                NameValuePair.TYPE_MULTIPART_DATA_FILE_PARAM,
+                fieldName,
+                fieldValue.cleanedValue(),
+                fileContentPosition));
+
+        multipartParams.add(new MultipartFormParameter(
+                fieldName,
+                fieldValue.rawValue(),
+                valueStart,
+                valueEnd,
+                fileContentPosition,
+                MultipartFormParameter.Type.GENERAL));
+
+        // Extract filename
+        String filename = extractFilename(fullPart);
+        if (filename != null) {
+            int filenamePosition = position;
+            int filenameStart = offset + fullPart.indexOf(filename);
+            int filenameEnd = filenameStart + filename.length();
+
+            LOGGER.debug("Extracted filename - name: {}, filename: {}, position: {}, start: {}, end: {}",
+                    fieldName, filename, filenamePosition, filenameStart, filenameEnd);
+
+            nameValuePairs.add(nameValuePairs.size() - 1, new NameValuePair(
+                    NameValuePair.TYPE_MULTIPART_DATA_FILE_NAME,
+                    fieldName,
+                    filename,
+                    filenamePosition));
+
+            multipartParams.add(multipartParams.size() - 1, new MultipartFormParameter(
+                    fieldName,
+                    filename,
+                    filenameStart,
+                    filenameEnd,
+                    filenamePosition,
+                    MultipartFormParameter.Type.FILE_NAME));
+        }
+
+        // Extract content-type
+        String contentType = extractContentType(fullPart);
+        if (contentType != null) {
+            int contentTypePosition = position + 1;
+            int contentTypeStart = offset + fullPart.indexOf(contentType);
+            int contentTypeEnd = contentTypeStart + contentType.length();
+
+            LOGGER.debug("Extracted content-type - name: {}, content-type: {}, position: {}, start: {}, end: {}",
+                    fieldName, contentType, contentTypePosition, contentTypeStart, contentTypeEnd);
+
+            nameValuePairs.add(nameValuePairs.size() - 1, new NameValuePair(
+                    NameValuePair.TYPE_MULTIPART_DATA_FILE_CONTENTTYPE,
+                    fieldName,
+                    contentType,
+                    contentTypePosition));
+
+            multipartParams.add(multipartParams.size() - 1, new MultipartFormParameter(
+                    fieldName,
+                    contentType,
+                    contentTypeStart,
+                    contentTypeEnd,
+                    contentTypePosition,
+                    MultipartFormParameter.Type.FILE_CONTENT_TYPE));
+        }
+
+        return fileContentPosition;
+    }
+
+    /**
+     * Extracts the filename from a file part.
+     *
+     * @param fullPart the complete part including boundary
+     * @return the filename or null if not found
+     */
+    private String extractFilename(String fullPart) {
+        Matcher filenameMatcher = FILENAME_PART_PATTERN.matcher(fullPart);
+        if (!filenameMatcher.find()) {
+            LOGGER.debug("Filename pattern not found in part");
+            return null;
+        }
+        return filenameMatcher.group("filename");
+    }
+
+    /**
+     * Extracts the content-type from a file part.
+     *
+     * @param fullPart the complete part including boundary
+     * @return the content-type or null if not found
+     */
+    private String extractContentType(String fullPart) {
+        Matcher contentTypeMatcher = CONTENTTYPE_PART_PATTERN.matcher(fullPart);
+        if (!contentTypeMatcher.find()) {
+            LOGGER.debug("Content-type pattern not found in part");
+            return null;
+        }
+        return contentTypeMatcher.group("contenttype");
+    }
+
+    /**
+     * Record to hold parsed part data.
+     */
+    private record ParsedPart(
+            List<NameValuePair> nameValuePairs,
+            List<MultipartFormParameter> multipartParameters,
+            int nextPosition,
+            int nextOffset) {}
 
     @Override
     public List<NameValuePair> getParamList() {
